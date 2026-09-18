@@ -186,7 +186,7 @@
   .hours h4{font-size:.9rem;font-weight:600;margin-bottom:10px;}
   .hours div{display:flex;justify-content:space-between;font-size:.88rem;color:var(--muted);padding:5px 0;}
 
-  form{background:var(--chalk);border:1px solid var(--ash);border-radius:20px;padding:40px 36px;}
+  form{background:var(--chalk);border:1px solid var(--ash);border-radius:20px;padding:40px 36px;position:relative;}
   form h3{font-size:1.35rem;font-weight:600;}
   form .note{color:var(--muted);font-size:.88rem;margin:8px 0 26px;}
   .field{margin-bottom:18px;}
@@ -199,7 +199,11 @@
   .field.invalid input{border-color:var(--clay);}
   .field.invalid .err{display:block;}
   form .btn{width:100%;}
+  form .btn:disabled{opacity:.7;cursor:wait;transform:none;}
   .form-status{margin-top:14px;font-size:.88rem;min-height:1.3em;font-weight:500;}
+  .wa-alt{margin-top:14px;text-align:center;font-size:.85rem;color:var(--muted);}
+  .wa-alt a{color:var(--purple);font-weight:600;}
+  .wa-alt a:hover{text-decoration:underline;}
 
   @media (max-width:940px){
     .hero-grid,.train-grid,.contact-grid{grid-template-columns:1fr;}
@@ -627,23 +631,29 @@
         </div>
       </div>
 
-      <form id="enquiryForm" novalidate class="reveal">
+      <form id="enquiryForm" action="https://formspree.io/f/mkjggvlj" method="POST" novalidate class="reveal">
         <h3>Send an enquiry</h3>
-        <p class="note">This opens WhatsApp with your message ready — nothing sends until you tap send there.</p>
+        <p class="note">Fill this in and we'll get back to you by phone or WhatsApp within a day.</p>
+
+        <!-- Formspree configuration -->
+        <input type="hidden" name="_subject" value="New enquiry from Esty's Tailoring Hub website">
+        <!-- Honeypot: real visitors never see or fill this -->
+        <input type="text" name="_gotcha" tabindex="-1" autocomplete="off" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;" aria-hidden="true">
+
         <div class="row2">
           <div class="field" id="f-name">
             <label for="name">Your name</label>
-            <input type="text" id="name" autocomplete="name" placeholder="e.g. Chioma Okafor">
+            <input type="text" id="name" name="name" autocomplete="name" placeholder="e.g. Chioma Okafor">
             <span class="err">Please tell us your name.</span>
           </div>
           <div class="field">
             <label for="phone">Phone (optional)</label>
-            <input type="tel" id="phone" autocomplete="tel" placeholder="0803 000 0000">
+            <input type="tel" id="phone" name="phone" autocomplete="tel" placeholder="0803 000 0000">
           </div>
         </div>
         <div class="field">
           <label for="interest">What do you need?</label>
-          <select id="interest">
+          <select id="interest" name="interest">
             <option>Ankara / Adire / Aso-oke fabric</option>
             <option>Lace &amp; trimmings</option>
             <option>Zippers</option>
@@ -655,10 +665,11 @@
         </div>
         <div class="field">
           <label for="message">Tell us more</label>
-          <textarea id="message" placeholder="Colours, quantity, measurements, or the date you need it by"></textarea>
+          <textarea id="message" name="message" placeholder="Colours, quantity, measurements, or the date you need it by"></textarea>
         </div>
-        <button type="submit" class="btn btn-primary">Send on WhatsApp</button>
-        <div class="form-status" id="formStatus" role="status"></div>
+        <button type="submit" class="btn btn-primary">Send enquiry</button>
+        <div class="form-status" id="formStatus" role="status" aria-live="polite"></div>
+        <p class="wa-alt">Prefer WhatsApp? <a href="https://wa.me/2348132120638" target="_blank" rel="noopener">Chat with us directly</a></p>
       </form>
     </div>
   </section>
@@ -782,16 +793,17 @@
     });
   });
 
+  /* ---- Enquiry form → Formspree (AJAX) ---- */
   var form = document.getElementById('enquiryForm');
   var status = document.getElementById('formStatus');
   form.addEventListener('submit', function(e){
     e.preventDefault();
+
     var nameField = document.getElementById('f-name');
     var nameInput = document.getElementById('name');
     var name = nameInput.value.trim();
-    var phone = document.getElementById('phone').value.trim();
-    var interest = document.getElementById('interest').value;
-    var message = document.getElementById('message').value.trim();
+    var btn = form.querySelector('button[type="submit"]');
+    var originalLabel = btn.textContent;
 
     if (!name){
       nameField.classList.add('invalid');
@@ -802,17 +814,39 @@
     }
     nameField.classList.remove('invalid');
 
-    var lines = [
-      "Hello Esty's Tailoring Hub, my name is " + name + ".",
-      "I'm interested in: " + interest + ".",
-      message ? "Details: " + message : "",
-      phone ? "You can reach me on: " + phone : ""
-    ].filter(Boolean);
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    status.style.color = '#5C4A68';
+    status.textContent = 'Sending your enquiry…';
 
-    window.open(WA + '?text=' + encodeURIComponent(lines.join('\n')), '_blank', 'noopener');
-    status.style.color = '#2F6B4F';
-    status.textContent = 'Opening WhatsApp with your message ready to send.';
-    form.reset();
+    fetch(form.action, {
+      method: 'POST',
+      body: new FormData(form),
+      headers: { 'Accept': 'application/json' }
+    })
+    .then(function(res){
+      if (res.ok){
+        status.style.color = '#2F6B4F';
+        status.textContent = "Thank you! Your enquiry has been sent — we'll be in touch shortly.";
+        form.reset();
+      } else {
+        return res.json().then(function(data){
+          var msg = (data && data.errors)
+            ? data.errors.map(function(er){ return er.message; }).join(', ')
+            : 'Something went wrong.';
+          throw new Error(msg);
+        });
+      }
+    })
+    .catch(function(){
+      status.style.color = '#A8432F';
+      status.innerHTML = 'Sorry, that didn\'t send. Please try again, or ' +
+        '<a href="' + WA + '" target="_blank" rel="noopener" style="text-decoration:underline;">message us on WhatsApp</a>.';
+    })
+    .then(function(){
+      btn.disabled = false;
+      btn.textContent = originalLabel;
+    });
   });
 
   document.getElementById('year').textContent = new Date().getFullYear();
